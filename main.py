@@ -1,6 +1,34 @@
 import math
 import random
-import sys
+
+def solve_3x3(M, F):
+    """Решение системы 3x3 методом Крамера."""
+    def det3(m):
+        return (
+            m[0][0]*m[1][1]*m[2][2]
+            + m[0][1]*m[1][2]*m[2][0]
+            + m[0][2]*m[1][0]*m[2][1]
+            - m[0][2]*m[1][1]*m[2][0]
+            - m[0][0]*m[1][2]*m[2][1]
+            - m[0][1]*m[1][0]*m[2][2]
+        )
+
+    D = det3(M)
+    if abs(D) < 1e-18:
+        return [math.nan, math.nan, math.nan]
+
+    def replace_col(mat, col_index, vec):
+        return [
+            [vec[i] if j == col_index else mat[i][j] for j in range(3)]
+            for i in range(3)
+        ]
+
+    Dx = det3(replace_col(M, 0, F))
+    Dy = det3(replace_col(M, 1, F))
+    Dz = det3(replace_col(M, 2, F))
+
+    return [Dx / D, Dy / D, Dz / D]
+
 
 def solve_system(n, k, a, b, c, f, p, q):
     l = k + 2
@@ -105,39 +133,44 @@ def solve_system(n, k, a, b, c, f, p, q):
             q[i] = 0.0
 
     # === ШАГ 4. Решение блока 3x3 напрямую ===
-    from numpy import array, linalg
+    # Матрица должна быть:
+    # верхняя строка = p[k], p[k+1], p[k+2]
+    # средняя строка = a[k+1], b[k+1], c[k+1]
+    # нижняя строка = q[k], q[k+1], q[k+2]
 
-    # формируем матрицу 3x3 блока
     M = [[0.0] * 3 for _ in range(3)]
     F_block = [0.0] * 3
 
-    # верхняя строка (k)
+    # верхняя (строка для уравнения k)
     for j in range(3):
         col = k + j
-        M[0][j] = p[col] if k == k else (a[k] if col == k - 1 else b[k] if col == k else c[k] if col == k + 1 else 0)
+        M[0][j] = p[col]
     F_block[0] = f[k]
 
-    # средняя строка (k+1)
+    # средняя (строка для уравнения k+1)
     for j in range(3):
         col = k + j
-        M[1][j] = a[k + 1] if col == k else b[k + 1] if col == k + 1 else c[k + 1] if col == k + 2 else 0
+        if col == k:
+            M[1][j] = a[k + 1]
+        elif col == k + 1:
+            M[1][j] = b[k + 1]
+        elif col == k + 2:
+            M[1][j] = c[k + 1]
+        else:
+            M[1][j] = 0.0
     F_block[1] = f[k + 1]
 
-    # нижняя строка (k+2)
+    # нижняя (строка для уравнения k+2)
     for j in range(3):
         col = k + j
-        M[2][j] = q[col] if k + 2 == l else (
-            a[k + 2] if col == k + 1 else b[k + 2] if col == k + 2 else c[k + 2] if col == k + 3 else 0)
+        M[2][j] = q[col]
     F_block[2] = f[k + 2]
 
-    try:
-        x_block = linalg.solve(array(M), array(F_block))
-    except linalg.LinAlgError:
+    x_block = solve_3x3(M, F_block)
+    if any(math.isnan(v) for v in x_block):
         return [math.nan] * (n + 1)
 
-    x[k] = x_block[0]
-    x[k + 1] = x_block[1]
-    x[k + 2] = x_block[2]
+    x[k], x[k + 1], x[k + 2] = x_block
 
     # === ШАГ 6. Обратный ход слева ===
     for i in range(k - 1, 0, -1):
@@ -163,6 +196,9 @@ def compute_error(x, x_true, q=1e-12):
             di = abs(x[i] - x_true[i])
         delta = max(delta, di)
     return delta
+
+# main() и автотесты можно оставить прежними — они не зависят от numpy.
+
 
 
 def main():
