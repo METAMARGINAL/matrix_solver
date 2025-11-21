@@ -1,8 +1,8 @@
 import math
 import random
 
+# Решение системы 3x3 методом Крамера
 def solve_3x3(M, F):
-    """Решение системы 3x3 методом Крамера."""
     def det3(m):
         return (
             m[0][0] * m[1][1] * m[2][2]
@@ -162,7 +162,6 @@ def solve_system(n, k, a, b, c, f, p, q):
 
 
 def read_system_from_file(filename):
-    """Считывает матрицу коэффициентов и вектор f из файла."""
     with open(filename, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f.readlines() if line.strip()]
 
@@ -210,6 +209,34 @@ def read_system_from_file(filename):
     return n, k, a, b, c, f, p, q
 
 
+def compute_rel_error(x_calc, x_true):
+    n = len(x_calc) - 1
+    q_ = 1e-12
+    max_err = 0.0
+    for i in range(1, n + 1):
+        if abs(x_true[i]) > q_:
+            err = abs(x_calc[i] - x_true[i]) / abs(x_true[i])
+        else:
+            err = abs(x_calc[i] - x_true[i])
+        if err > max_err:
+            max_err = err
+    return max_err
+
+
+# Исправленная оценка точности — максимальная относительная ошибка
+def compute_precision_modified(x_calc, x_true):
+    q_ = 1e-12
+    delta = 0.0
+    for xi, xi_hat in zip(x_true[1:], x_calc[1:]):
+        if abs(xi) > q_:
+            sol = abs(xi - xi_hat) / abs(xi)
+        else:
+            sol = abs(xi - xi_hat)
+        if sol > delta:
+            delta = sol
+    return delta
+
+
 def main():
     while True:
         print("Выберите режим:")
@@ -226,15 +253,114 @@ def main():
             filename = "input.txt"
             try:
                 n, k, a, b, c, f, p, q = read_system_from_file(filename)
-                x = solve_system(n, k, a, b, c, f, p, q)
-                print(f"\nРешена система размером {n}x{n}")
+                unit_vec = [0.0] + [1.0] * n
+
+                l = k + 2
+                f_tilde = [0.0] * (n + 1)
+                for i in range(1, n + 1):
+                    if i != k and i != l:
+                        f_tilde[i] = (a[i] * unit_vec[i - 1] if i > 1 else 0) \
+                                     + b[i] * unit_vec[i] \
+                                     + (c[i] * unit_vec[i + 1] if i < n else 0)
+                    elif i == k:
+                        f_tilde[i] = sum(p[j] * unit_vec[j] for j in range(1, n + 1))
+                    elif i == l:
+                        f_tilde[i] = sum(q[j] * unit_vec[j] for j in range(1, n + 1))
+
+                x = solve_system(n, k, a[:], b[:], c[:], f_tilde[:], p[:], q[:])
+
+                print(f"\nРешена система с f = A * единичный вектор, размером {n}x{n}")
                 for i in range(1, n + 1):
                     print(f"x[{i}] = {x[i]:.6f}")
+
+                d_ = max(abs(1.0 - x[i]) for i in range(1, n + 1))
+                print(f"\nОценка точности (max |1 - x_i|): {d_:.2e}")
+
+                print("\nПервые 5 компонент (отклонения):")
+                for i in range(1, min(6, n + 1)):
+                    print(f"x[{i}] = {x[i]:.6f}, отклонение = {x[i] - 1.0:+.2e}")
+
             except Exception as e:
                 print("Ошибка при чтении файла:", e)
 
         elif mode == 2:
-            print("Автотестирование выполняется.")
+            print("=== Автотестирование ===")
+            test_cases = [
+                {"n": 10, "M": 10},
+                {"n": 10, "M": 100},
+                {"n": 10, "M": 1000},
+                {"n": 100, "M": 10},
+                {"n": 100, "M": 100},
+                {"n": 100, "M": 1000},
+                {"n": 1000, "M": 10},
+                {"n": 1000, "M": 100},
+                {"n": 1000, "M": 1000},
+            ]
+
+            print(f"{'№':^3} {'n':^6} {'Диапазон M':^12} {'Отн. погрешность':^20} {'Оценка точности':^20}")
+            print("-" * 65)
+
+            for idx, case in enumerate(test_cases, 1):
+                n = case["n"]
+                M = case["M"]
+                k = random.randint(1, n - 3)
+                total_rel_err = 0.0
+                total_prec = 0.0
+                valid_tests = 0
+
+                for _ in range(10):
+                    x_true = [0.0] + [random.uniform(-M, M) for _ in range(n)]
+                    a = [0.0] * (n + 1)
+                    b = [0.0] * (n + 1)
+                    c = [0.0] * (n + 1)
+                    f = [0.0] * (n + 1)
+                    p = [0.0] * (n + 1)
+                    q = [0.0] * (n + 1)
+
+                    for i in range(1, n + 1):
+                        a[i] = 0 if i == 1 else random.uniform(-M, M)
+                        b[i] = random.uniform(-M, M)
+                        c[i] = 0 if i == n else random.uniform(-M, M)
+                        if abs(b[i]) <= abs(a[i]) + abs(c[i]) + 1.0:
+                            b[i] = (abs(a[i]) + abs(c[i]) + 1.0) * (1 if b[i] >= 0 else -1)
+                        if abs(b[i]) < 1e-9:
+                            b[i] = 1.0
+
+                    for j in range(1, n + 1):
+                        p[j] = random.uniform(-M, M)
+                        q[j] = random.uniform(-M, M)
+
+                    for i in range(1, n + 1):
+                        if i != k and i != k + 2:
+                            f[i] = (
+                                (a[i] * x_true[i - 1] if i > 1 else 0)
+                                + b[i] * x_true[i]
+                                + (c[i] * x_true[i + 1] if i < n else 0)
+                            )
+                        elif i == k:
+                            f[i] = sum(p[j] * x_true[j] for j in range(1, n + 1))
+                        elif i == k + 2:
+                            f[i] = sum(q[j] * x_true[j] for j in range(1, n + 1))
+
+                    x_calc = solve_system(n, k, a[:], b[:], c[:], f[:], p[:], q[:])
+
+                    if any(math.isnan(v) for v in x_calc):
+                        continue
+
+                    rel_err = compute_rel_error(x_calc, x_true)
+                    delta = compute_precision_modified(x_calc, x_true)
+
+                    total_rel_err += rel_err
+                    total_prec += delta
+                    valid_tests += 1
+
+                if valid_tests > 0:
+                    avg_rel_err = total_rel_err / valid_tests
+                    avg_prec = total_prec / valid_tests
+                    print(f"{idx:^3} {n:^6} {M:^12} {avg_rel_err:>20.3e} {avg_prec:>20.3e}")
+                else:
+                    print(f"{idx:^3} {n:^6} {M:^12} {'сингулярная система':^40}")
+
         else:
             print("Неизвестный режим.")
 
